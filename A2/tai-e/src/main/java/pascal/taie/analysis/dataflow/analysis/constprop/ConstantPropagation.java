@@ -22,6 +22,7 @@
 
 package pascal.taie.analysis.dataflow.analysis.constprop;
 
+import org.checkerframework.checker.units.qual.A;
 import pascal.taie.analysis.dataflow.analysis.AbstractDataflowAnalysis;
 import pascal.taie.analysis.graph.cfg.CFG;
 import pascal.taie.config.AnalysisConfig;
@@ -104,18 +105,17 @@ public class ConstantPropagation extends
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
         // TODO - finish me
-        if(stmt.getDef().isEmpty()){
+        if (stmt.getDef().isEmpty() || !(stmt.getDef().get() instanceof Var)) {
             return out.copyFrom(in);
         }
-        Var x = (Var)stmt.getDef().get();
-        if(!canHoldInt(x)){
-            return false;
+        Var x = (Var) stmt.getDef().get();
+        if (!canHoldInt(x)) {
+            return out.copyFrom(in);
         }
-        System.out.println(stmt.getUses().get(stmt.getUses().size() - 1));
-        Value value = evaluate((Exp)(stmt.getUses().get(stmt.getUses().size() - 1)) , in);
+        Value value = evaluate((Exp) (stmt.getUses().get(stmt.getUses().size() - 1)), in);
         CPFact in_copy = in.copy();
         in_copy.remove(x);
-        in_copy.update(x , value);
+        in_copy.update(x, value);
         return out.copyFrom(in_copy);
     }
 
@@ -153,11 +153,20 @@ public class ConstantPropagation extends
             int value = ((IntLiteral) exp).getValue();
             return Value.makeConstant(value);
         }
-        if(!check_exprType(exp)){
+        if (!check_exprType(exp)) {
             return Value.getNAC();
         }
         Value x = in.get(((BinaryExp) exp).getOperand1());
         Value y = in.get(((BinaryExp) exp).getOperand2());
+        // x = a / 0 , x is UNDEF even if a is nac
+        if(x.isNAC() && y.isConstant() && y.getConstant() == 0){
+            if(exp instanceof  ArithmeticExp){
+                ArithmeticExp.Op op = ((ArithmeticExp)exp).getOperator();
+                if(op == ArithmeticExp.Op.REM || op == ArithmeticExp.Op.DIV){
+                    return Value.getUndef();
+                }
+            }
+        }
         if (x.isNAC() || y.isNAC()) {
             return Value.getNAC();
         }
@@ -167,27 +176,30 @@ public class ConstantPropagation extends
         int x_const = x.getConstant();
         int y_const = y.getConstant();
         if (exp instanceof ArithmeticExp) {
-            ArithmeticExp.Op op = ((ArithmeticExp)exp).getOperator();
-            return evaluateArith(op , x_const , y_const);
+            ArithmeticExp.Op op = ((ArithmeticExp) exp).getOperator();
+            return evaluateArith(op, x_const, y_const);
         }
-        if(exp instanceof BitwiseExp){
-            BitwiseExp.Op op = ((BitwiseExp)exp).getOperator();
-            return evaluateBitWise(op , x_const , y_const);
+        if (exp instanceof BitwiseExp) {
+            BitwiseExp.Op op = ((BitwiseExp) exp).getOperator();
+            return evaluateBitWise(op, x_const, y_const);
         }
-        if(exp instanceof ConditionExp){
-            ConditionExp.Op op = ((ConditionExp)exp).getOperator();
-            return evaluateCond(op , x_const , y_const);
+        if (exp instanceof ConditionExp) {
+            ConditionExp.Op op = ((ConditionExp) exp).getOperator();
+            return evaluateCond(op, x_const, y_const);
         }
-        if(exp instanceof ShiftExp){
-            ShiftExp.Op op = ((ShiftExp)exp).getOperator();
-            return evaluateShift(op , x_const , y_const);
+        if (exp instanceof ShiftExp) {
+            ShiftExp.Op op = ((ShiftExp) exp).getOperator();
+            return evaluateShift(op, x_const, y_const);
         }
-        return null;
+        return Value.getNAC();
     }
-    private static boolean check_exprType(Exp exp){
-        return (exp instanceof BinaryExp) || (exp instanceof Var) || (exp instanceof IntLiteral);
+
+    private static boolean check_exprType(Exp exp) {
+        return (exp instanceof Var) || (exp instanceof IntLiteral) || (exp instanceof ArithmeticExp) || (exp instanceof ConditionExp)
+                || (exp instanceof ShiftExp) || (exp instanceof BitwiseExp)  ;
     }
-    private static Value evaluateShift(ShiftExp.Op op , int x , int y){
+
+    private static Value evaluateShift(ShiftExp.Op op, int x, int y) {
         Value value = null;
         switch (op) {
             case SHL: {
@@ -205,37 +217,39 @@ public class ConstantPropagation extends
         }
         return value;
     }
-    private static Value evaluateCond(ConditionExp.Op op , int x , int y){
+
+    private static Value evaluateCond(ConditionExp.Op op, int x, int y) {
         Value value = null;
         switch (op) {
             case EQ: {
-                value = Value.makeConstant(x == y ? 1 : 0 );
+                value = Value.makeConstant(x == y ? 1 : 0);
                 break;
             }
             case NE: {
-                value = Value.makeConstant(x != y ? 1 : 0 );
+                value = Value.makeConstant(x != y ? 1 : 0);
                 break;
             }
             case LT: {
-                value = Value.makeConstant(x < y ? 1 : 0 );
+                value = Value.makeConstant(x < y ? 1 : 0);
                 break;
             }
             case GT: {
-                value = Value.makeConstant(x > y ? 1 : 0 );
+                value = Value.makeConstant(x > y ? 1 : 0);
                 break;
             }
             case LE: {
-                value = Value.makeConstant(x <= y ? 1 : 0 );
+                value = Value.makeConstant(x <= y ? 1 : 0);
                 break;
             }
             case GE: {
-                value = Value.makeConstant(x >= y ? 1 : 0 );
+                value = Value.makeConstant(x >= y ? 1 : 0);
                 break;
             }
         }
         return value;
     }
-    private static Value evaluateBitWise(BitwiseExp.Op op , int x , int y){
+
+    private static Value evaluateBitWise(BitwiseExp.Op op, int x, int y) {
         Value value = null;
         switch (op) {
             case OR: {
@@ -253,6 +267,7 @@ public class ConstantPropagation extends
         }
         return value;
     }
+
     private static Value evaluateArith(ArithmeticExp.Op op, int x, int y) {
         Value value = null;
         switch (op) {
@@ -268,13 +283,13 @@ public class ConstantPropagation extends
                 value = Value.makeConstant(x * y);
                 break;
             }
-            case REM:{
-                if(y == 0)return Value.getUndef();
+            case REM: {
+                if (y == 0) return Value.getUndef();
                 value = Value.makeConstant(x % y);
                 break;
             }
-            case DIV:{
-                if(y == 0)return Value.getUndef();
+            case DIV: {
+                if (y == 0) return Value.getUndef();
                 value = Value.makeConstant(x / y);
                 break;
             }
