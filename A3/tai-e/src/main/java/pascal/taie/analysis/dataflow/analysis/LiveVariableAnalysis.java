@@ -25,8 +25,15 @@ package pascal.taie.analysis.dataflow.analysis;
 import pascal.taie.analysis.dataflow.fact.SetFact;
 import pascal.taie.analysis.graph.cfg.CFG;
 import pascal.taie.config.AnalysisConfig;
+import pascal.taie.ir.exp.LValue;
+import pascal.taie.ir.exp.RValue;
 import pascal.taie.ir.exp.Var;
 import pascal.taie.ir.stmt.Stmt;
+import soot.Value;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Implementation of classic live variable analysis.
@@ -48,23 +55,48 @@ public class LiveVariableAnalysis extends
     @Override
     public SetFact<Var> newBoundaryFact(CFG<Stmt> cfg) {
         // TODO - finish me
-        return null;
+        return new SetFact<>();
     }
 
     @Override
     public SetFact<Var> newInitialFact() {
         // TODO - finish me
-        return null;
+        return new SetFact<>();
     }
 
     @Override
     public void meetInto(SetFact<Var> fact, SetFact<Var> target) {
         // TODO - finish me
+        target.union(fact);
     }
 
     @Override
     public boolean transferNode(Stmt stmt, SetFact<Var> in, SetFact<Var> out) {
         // TODO - finish me
-        return false;
+        SetFact<Var> use_b = new SetFact<>();
+        // Get use Var
+        for (RValue i : stmt.getUses()) {
+            if (i instanceof Var) {
+                use_b.add((Var) i);
+            }
+        }
+        boolean is_changed = false;
+        if (stmt.getDef().isPresent() && stmt.getDef().get() instanceof Var) {
+            // handle if def is not empty
+            SetFact<Var> out_copy = out.copy();
+            out_copy.remove((Var) stmt.getDef().get());
+            use_b.union(out_copy); // use_b = use union(out - def)
+            is_changed = !in.equals(use_b);
+            if(is_changed){
+                in.set(use_b);
+            }
+        } else {
+            use_b.union(out);
+            is_changed = !in.equals(use_b);
+            if(is_changed){
+                in.set(use_b);
+            }
+        }
+        return is_changed;
     }
 }
