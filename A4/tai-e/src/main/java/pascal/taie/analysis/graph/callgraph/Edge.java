@@ -41,10 +41,10 @@ public class Edge<CallSite, Method> {
     private final int hashCode;
 
     public Edge(CallKind kind, CallSite callSite, Method callee) {
-        this.kind = kind;
-        this.callSite = callSite;
-        this.callee = callee;
-        hashCode = Hashes.hash(kind, callSite, callee);
+            this.kind = kind;
+            this.callSite = callSite;
+            this.callee = callee;
+            hashCode = Hashes.hash(kind, callSite, callee);
     }
 
     /**
