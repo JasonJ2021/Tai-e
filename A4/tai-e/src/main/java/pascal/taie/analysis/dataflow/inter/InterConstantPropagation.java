@@ -43,6 +43,8 @@ import pascal.taie.language.classes.JMethod;
 
 import java.util.List;
 
+import static pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation.canHoldInt;
+
 /**
  * Implementation of interprocedural constant propagation for int values.
  */
@@ -82,12 +84,7 @@ public class InterConstantPropagation extends
     @Override
     protected boolean transferCallNode(Stmt stmt, CPFact in, CPFact out) {
         // TODO - finish me
-//        return out.copyFrom(in);
-        CPFact Copy = out.copy();
-        for (Var key : in.keySet()) {
-            out.update(key, in.get(key));
-        }
-        return !out.equals(Copy);
+        return out.copyFrom(in);
     }
 
     @Override
@@ -109,10 +106,10 @@ public class InterConstantPropagation extends
         if (edge.getSource().getDef().isPresent()) {
             LValue lValue = edge.getSource().getDef().get();
             if(lValue instanceof Var){
-                out.remove((Var) lValue);
+                out_copy.remove((Var) lValue); // fxxk 这里一开始写了out.remove.......
             }
         }
-        return out;
+        return out_copy;
     }
 
     @Override
@@ -120,20 +117,15 @@ public class InterConstantPropagation extends
         // TODO - finish me
         CPFact cpfact = new CPFact();
         // 1.首先我们要拿到invokeExp
-        InvokeExp invokeExp = null;
-        for (RValue rvalue : edge.getSource().getUses()) {
-            if (rvalue instanceof InvokeExp) {
-                invokeExp = (InvokeExp) rvalue;
-                break;
-            }
-        }
-        if (invokeExp == null) return null;
+        Invoke invoke = (Invoke)edge.getSource();
+        InvokeExp invokeExp = invoke.getInvokeExp();
+
         // 2.在callee Jmethod中拿到形参
         for (int i = 0; i < edge.getCallee().getParamCount(); i++) {
             Var param = edge.getCallee().getIR().getParam(i);
             // 3. 把形参和实参的value对应起来
             Value value = callSiteOut.get(invokeExp.getArg(i));
-            cpfact.update(param, value);
+            if(canHoldInt(param))cpfact.update(param,value);
         }
 
         return cpfact;
@@ -148,21 +140,19 @@ public class InterConstantPropagation extends
             return cpFact;
         }
         // 获取定义变量
-        LValue def_Var = edge.getCallSite().getDef().get();
-//        if (edge.getReturnVars().size() == 1) {
-//            cpFact.update((Var) def_Var, returnOut.get(edge.getReturnVars().iterator().next()));
-//        } else {
-//            cpFact.update((Var) def_Var, Value.getNAC());
-//        }
+//        LValue def_Var = edge.getCallSite().getDef().get();
+        Invoke invoke  = (Invoke)edge.getCallSite();
+        Var def_Var = invoke.getLValue();
+        if(def_Var == null)return cpFact;
         // 如果有多个返回值，需要进行Meet操作
         // === Sol ===
         Value[] values = new Value[1];
         values[0] = Value.getUndef();
-        edge.getReturnVars().stream().forEach(Var -> {
-            Value value = returnOut.get(Var);
+        edge.getReturnVars().forEach(var -> {
+            Value value = returnOut.get(var);
             values[0] = cp.meetValue(value , values[0]);
         });
-        cpFact.update((Var)def_Var , values[0]);
+        cpFact.update( def_Var , values[0]);
         return cpFact;
     }
 }
