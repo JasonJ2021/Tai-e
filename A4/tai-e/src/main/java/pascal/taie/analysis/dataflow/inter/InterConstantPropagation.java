@@ -82,7 +82,12 @@ public class InterConstantPropagation extends
     @Override
     protected boolean transferCallNode(Stmt stmt, CPFact in, CPFact out) {
         // TODO - finish me
-        return out.copyFrom(in);
+//        return out.copyFrom(in);
+        CPFact Copy = out.copy();
+        for (Var key : in.keySet()) {
+            out.update(key, in.get(key));
+        }
+        return !out.equals(Copy);
     }
 
     @Override
@@ -102,7 +107,10 @@ public class InterConstantPropagation extends
         // TODO - finish me
         CPFact out_copy = out.copy();
         if (edge.getSource().getDef().isPresent()) {
-            out.remove((Var) edge.getSource().getDef().get());
+            LValue lValue = edge.getSource().getDef().get();
+            if(lValue instanceof Var){
+                out.remove((Var) lValue);
+            }
         }
         return out;
     }
@@ -141,13 +149,20 @@ public class InterConstantPropagation extends
         }
         // 获取定义变量
         LValue def_Var = edge.getCallSite().getDef().get();
-//        RValue ret_var = edge.getSource().getUses().get(0);
-//        RValue ret_var =
-        if (edge.getReturnVars().size() == 1) {
-            cpFact.update((Var) def_Var, returnOut.get(edge.getReturnVars().iterator().next()));
-        } else {
-            cpFact.update((Var) def_Var, Value.getNAC());
-        }
+//        if (edge.getReturnVars().size() == 1) {
+//            cpFact.update((Var) def_Var, returnOut.get(edge.getReturnVars().iterator().next()));
+//        } else {
+//            cpFact.update((Var) def_Var, Value.getNAC());
+//        }
+        // 如果有多个返回值，需要进行Meet操作
+        // === Sol ===
+        Value[] values = new Value[1];
+        values[0] = Value.getUndef();
+        edge.getReturnVars().stream().forEach(Var -> {
+            Value value = returnOut.get(Var);
+            values[0] = cp.meetValue(value , values[0]);
+        });
+        cpFact.update((Var)def_Var , values[0]);
         return cpFact;
     }
 }

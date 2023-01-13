@@ -84,9 +84,10 @@ class InterSolver<Method, Node, Fact> {
         while (!workList.isEmpty()) {
             Node block = workList.iterator().next();
             workList.remove(block);
+            Fact in_block = result.getInFact(block);
             for (ICFGEdge<Node> pre_edge : icfg.getInEdgesOf(block)){
                 Fact p_outFact = result.getOutFact(pre_edge.getSource()); // Get outfact of P
-                analysis.meetInto(analysis.transferEdge(pre_edge , p_outFact),result.getInFact(block));
+                analysis.meetInto(analysis.transferEdge(pre_edge , p_outFact),in_block);
             }
             if (analysis.transferNode(block, result.getInFact(block), result.getOutFact(block))) {
                 workList.addAll(icfg.getSuccsOf(block));

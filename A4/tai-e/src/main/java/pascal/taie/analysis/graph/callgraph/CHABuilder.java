@@ -55,8 +55,7 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
         WL.addLast(entry);
         while (!WL.isEmpty()) {
             JMethod m = WL.removeFirst();
-            if (!callGraph.contains(m)) {
-                callGraph.addReachableMethod(m);
+            if (callGraph.addReachableMethod(m)) {
                 Stream<Invoke> invokeStream = callGraph.callSitesIn(m);
                 invokeStream.forEach((cs) -> {
                     Set<JMethod> T = resolve(cs);
@@ -94,9 +93,12 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
                 JClass c_t = deque.removeFirst();
                 JMethod dispatch_method = dispatch(c_t, m);
                 if (dispatch_method != null) T.add(dispatch_method);
-                deque.addAll(hierarchy.getDirectImplementorsOf(c_t));
-                deque.addAll(hierarchy.getDirectSubinterfacesOf(c_t));
-                deque.addAll(hierarchy.getDirectSubclassesOf(c_t));
+                if (c_t.isInterface()) {
+                    deque.addAll(hierarchy.getDirectImplementorsOf(c_t));
+                    deque.addAll(hierarchy.getDirectSubinterfacesOf(c_t));
+                } else {
+                    deque.addAll(hierarchy.getDirectSubclassesOf(c_t));
+                }
             }
         }
         return T;
