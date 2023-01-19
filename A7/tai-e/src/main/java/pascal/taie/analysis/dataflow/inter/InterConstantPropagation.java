@@ -22,6 +22,8 @@
 
 package pascal.taie.analysis.dataflow.inter;
 
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 import pascal.taie.World;
 import pascal.taie.analysis.dataflow.analysis.constprop.CPFact;
 import pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation;
@@ -60,8 +62,11 @@ public class InterConstantPropagation extends
 
     private final ConstantPropagation cp;
     private PointerAnalysisResult pta;
-    private Map<Var, Set<Stmt>> storeFields;
-    private Map<Var, Set<Stmt>> storeArrays;
+    private Multimap<Var, Stmt> storeFields = HashMultimap.create();
+    private Multimap<Var, Stmt> storeArrays = HashMultimap.create();
+    private Multimap<Var, Stmt> loadFields = HashMultimap.create();
+    private Multimap<Var, Stmt> loadArrays = HashMultimap.create();
+//    private Map<InstanceField, Set<Value>> instanceFieldValueMap;
 
     public InterConstantPropagation(AnalysisConfig config) {
         super(config);
@@ -74,23 +79,26 @@ public class InterConstantPropagation extends
         pta = World.get().getResult(ptaId);
         // You can do initialization work here
         // 维护别名信息
-        storeFields = new HashMap<>();
-        storeArrays = new HashMap<>();
         for (Var var_x : pta.getVars()) {
-            storeFields.put(var_x, new HashSet<>());
-            storeArrays.put(var_x, new HashSet<>());
             for (Var var_y : pta.getVars()) {
                 for (Obj obj : pta.getPointsToSet(var_x)) {
                     // 如果var_y指向的对象集合中包含var_x指向的对象集合，那么他们是一对别名
                     // 需要把别名的storefield/storeArray存放起来
                     if (pta.getPointsToSet(var_y).contains(obj)) {
-                        storeFields.get(var_x).addAll(var_y.getStoreFields());
-                        storeArrays.get(var_x).addAll(var_y.getStoreArrays());
+                        storeFields.putAll(var_x , var_y.getStoreFields());
+                        storeArrays.putAll(var_x , var_y.getStoreArrays());
+                        loadFields.putAll(var_x , var_y.getLoadFields());
+                        loadArrays.putAll(var_x , var_y.getLoadArrays());
                         break;
                     }
                 }
             }
         }
+//        for (InstanceField instance_field : pta.getInstanceFields()) {
+//            // 建立o.f -> value的映射关系
+//            instanceFieldValueMap.put(instance_field, new HashSet<>());
+//            instanceFieldValueMap.get(instance_field).add(Value.getUndef());
+//        }
     }
 
     @Override
@@ -211,6 +219,43 @@ public class InterConstantPropagation extends
             in_copy.remove(lValue);
             in_copy.update(lValue, res);
             return out.copyFrom(in_copy);
+        } else if (stmt instanceof StoreField storeField) {
+            // 处理StoreField x.f = y / T.f = y
+            JField jField = storeField.getFieldRef().resolve();
+            Set<Stmt> _set = new HashSet<>();
+            if (storeField.isStatic()) {
+                for (Stmt node : icfg) {
+                    if (node instanceof LoadField loadField && loadField.isStatic()) {
+                        JField resolve = loadField.getFieldAccess().getFieldRef().resolve();
+                        if (resolve == jField) {
+                            _set.add(node); // 添加到set中
+                        }
+                    }
+                }
+                solver.getWorkList().addAll(_set);
+            } else {
+                Var base = ((InstanceFieldAccess) storeField.getFieldAccess()).getBase();
+                solver.getWorkList().addAll(loadFields.get(base));
+            }
+            return out.copyFrom(in);
+        } else if (stmt instanceof StoreArray storeArray) {
+            // 处理StoreArray a[i] = y
+            Var base = storeArray.getArrayAccess().getBase();
+            Var index = storeArray.getArrayAccess().getIndex();
+            Value i_value = solver.getResult().getInFact(stmt).get(index);
+            if (i_value == Value.getUndef()) {
+                // i == UNDEF,没有别名
+                return out.copyFrom(in);
+            }
+            Set<LoadArray> collects = loadArrays.get(base).stream()
+                    .map(loadArray -> (LoadArray) loadArray) // 取出LoadArray
+                    .filter(loadArray -> solver.getResult().getInFact(loadArray).get(loadArray.getArrayAccess().getIndex()) != Value.getUndef()) // 保证j不为UNDEF
+                    .filter(loadArray -> i_value == Value.getNAC() ||
+                            solver.getResult().getInFact(loadArray).get(loadArray.getArrayAccess().getIndex()) == Value.getNAC() ||
+                            solver.getResult().getInFact(loadArray).get(loadArray.getArrayAccess().getIndex()) == i_value
+                    ).collect(Collectors.toSet());
+            solver.getWorkList().addAll(collects);
+            return out.copyFrom(in);
         }
 
         return cp.transferNode(stmt, in, out);

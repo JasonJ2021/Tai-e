@@ -27,6 +27,7 @@ import pascal.taie.analysis.graph.icfg.ICFG;
 import pascal.taie.analysis.graph.icfg.ICFGEdge;
 import pascal.taie.util.collection.SetQueue;
 
+import java.util.Collections;
 import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -96,5 +97,9 @@ class InterSolver<Method, Node, Fact> {
 
     public DataflowResult<Node, Fact> getResult() {
         return result;
+    }
+
+    public Queue<Node> getWorkList(){
+        return workList;
     }
 }
