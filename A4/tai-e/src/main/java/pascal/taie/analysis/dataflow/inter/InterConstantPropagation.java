@@ -106,7 +106,7 @@ public class InterConstantPropagation extends
         if (edge.getSource().getDef().isPresent()) {
             LValue lValue = edge.getSource().getDef().get();
             if(lValue instanceof Var){
-                out_copy.remove((Var) lValue); // fxxk 这里一开始写了out.remove.......
+                out_copy.remove((Var) lValue); // 这里一开始写了out.remove.......
             }
         }
         return out_copy;
